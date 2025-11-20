@@ -1,0 +1,11 @@
+/* src/App.css */
+/* Intentionally minimal; pages handle layout & colors */
+
+/* Make sure root takes full width & height */
+#root {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+

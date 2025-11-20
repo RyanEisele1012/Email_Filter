@@ -1,0 +1,34 @@
+/* src/index.css */
+
+:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+/* Reset box sizing */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Full-viewport base */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Default background for pages that don't override it */
+body {
+  background-color: #020617; /* same dark as dashboard */
+}
+
+/* React root */
+#root {
+  min-height: 100vh;
+  width: 100%;
+}
+
