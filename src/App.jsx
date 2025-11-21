@@ -97,14 +97,12 @@ const DashboardContent = () => {
 
       {/* Profile information */}
       <section className="profile-section">
-        <h2 className="section-heading">
-          Welcome {accounts[0].name}
-        </h2>
+        <h2 className="section-heading">Welcome {accounts[0].name}</h2>
 
         {graphData ? (
           <ProfileData graphData={graphData} />
         ) : (
-          <Button variant="secondary" onClick={RequestProfileData}>
+          <Button variant="outline-secondary" onClick={RequestProfileData}>
             Load profile from Microsoft Graph
           </Button>
         )}
@@ -125,11 +123,10 @@ const MainContent = () => {
 
       <UnauthenticatedTemplate>
         <div className="App App--landing">
+          {/* HERO */}
           <section className="landing-hero">
             <div className="landing-hero__left">
-              <span className="landing-pill">
-                Azure • AI • Outlook
-              </span>
+              <span className="landing-pill">Azure • AI • Outlook</span>
               <h1 className="landing-title">Email Filter</h1>
               <p className="landing-subtitle">
                 AI-powered spam filtering for Outlook, built on Microsoft Azure.
@@ -161,6 +158,31 @@ const MainContent = () => {
               </div>
             </div>
           </section>
+
+          {/* HOW IT WORKS + ABOUT US */}
+          <section className="landing-info">
+            <div className="landing-info__block">
+              <h2 className="landing-info__title">How it works</h2>
+              <p className="landing-info__text">
+                Once you sign in with your Microsoft account, Email Filter uses
+                Microsoft Graph API to listen for new Outlook emails. Each
+                message is scored by a machine learning model hosted in Azure,
+                and spam is automatically routed to your spam folder while
+                legitimate mail stays in your inbox.
+              </p>
+            </div>
+
+            <div className="landing-info__block">
+              <h2 className="landing-info__title">About this project</h2>
+              <p className="landing-info__text">
+                This is a student project demonstrating how Azure cloud
+                services, machine learning, and a simple web dashboard can work
+                together to improve email security. Only anonymized statistics
+                are stored; full email contents are processed just long enough
+                to classify spam vs. ham.
+              </p>
+            </div>
+          </section>
         </div>
       </UnauthenticatedTemplate>
     </>
@@ -174,5 +196,6 @@ export default function App() {
     </PageLayout>
   );
 }
+
 
 
