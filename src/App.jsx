@@ -1,59 +1,69 @@
-// src/App.jsx
-import React, { useState } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import LoginPage from "./pages/LoginPage";
-import DashboardPage from "./pages/DashboardPage";
-import "./App.css";
+import React, { useState } from 'react';
 
-function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+import { PageLayout } from './components/PageLayout';
+import { loginRequest } from './authConfig';
+import { getUserData } from './graph';
+import { ProfileData } from './components/ProfileData';
 
-  const handleLogin = () => {
-    // later: plug Azure auth here + store token
-    setIsAuthenticated(true);
-  };
+import { AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from '@azure/msal-react';
+import './App.css';
+import Button from 'react-bootstrap/Button';
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-  };
+/**
+ * Renders information about the signed-in user or a button to retrieve data about the user
+ */
 
-  return (
-    <Routes>
-      {/* Login page */}
-      <Route
-        path="/login"
-        element={<LoginPage onLogin={handleLogin} />}
-      />
+const ProfileContent = () => {
+    const { instance, accounts } = useMsal();
+    const [graphData, setGraphData] = useState(null);
 
-      {/* Protected dashboard */}
-      <Route
-        path="/dashboard"
-        element={
-          isAuthenticated ? (
-            <DashboardPage onLogout={handleLogout} />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
+    function RequestProfileData() {
+        // Silently acquires an access token which is then attached to a request for MS Graph data
+        instance
+            .acquireTokenSilent({
+                ...loginRequest,
+                account: accounts[0],
+            })
+            .then((response) => {
+                getUserData(response.accessToken).then((response) => setGraphData(response));
+            });
+    }
 
-      {/* Default route: send people to login or dashboard based on auth */}
-      <Route
-        path="/"
-        element={
-          isAuthenticated ? (
-            <Navigate to="/dashboard" replace />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
-      />
+    return (
+        <>
+            <h5 className="profileContent">Welcome {accounts[0].name}</h5>
+            {graphData ? (
+                <ProfileData graphData={graphData} />
+            ) : (
+                <Button variant="secondary" onClick={RequestProfileData}>
+                    Request Profile
+                </Button>
+            )}
+        </>
+    );
+};
 
-      {/* Catch-all: redirect unknown routes */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
+/**
+ * If a user is authenticated the ProfileContent component above is rendered. Otherwise a message indicating a user is not authenticated is rendered.
+ */
+const MainContent = () => {
+    return (
+        <div className="App">
+            <AuthenticatedTemplate>
+                <ProfileContent />
+            </AuthenticatedTemplate>
+
+            <UnauthenticatedTemplate>
+                <h5 className="card-title">Please sign-in to see your profile information.</h5>
+            </UnauthenticatedTemplate>
+        </div>
+    );
+};
+
+export default function App() {
+    return (
+        <PageLayout>
+            <MainContent />
+        </PageLayout>
+    );
 }
-
-export default App;
-
