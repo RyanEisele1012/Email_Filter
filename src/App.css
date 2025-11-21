@@ -187,6 +187,30 @@
   gap: 1.75rem;
   margin-top: 2.25rem;
 }
+/* Stats row inside main landing container */
+.landing-stats {
+  margin-top: 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1.5rem;
+}
+
+.landing-stat {
+  text-align: center;
+}
+
+.landing-stat__value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.landing-stat__label {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
 
 .landing-info__block {
   background-color: #f9fafb;
