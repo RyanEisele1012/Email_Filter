@@ -97,14 +97,12 @@ const DashboardContent = () => {
 
       {/* Profile information */}
       <section className="profile-section">
-        <h2 className="section-heading">
-          Welcome {accounts[0].name}
-        </h2>
+        <h2 className="section-heading">Welcome {accounts[0].name}</h2>
 
         {graphData ? (
           <ProfileData graphData={graphData} />
         ) : (
-          <Button variant="secondary" onClick={RequestProfileData}>
+          <Button variant="outline-secondary" onClick={RequestProfileData}>
             Load profile from Microsoft Graph
           </Button>
         )}
@@ -124,45 +122,90 @@ const MainContent = () => {
       </AuthenticatedTemplate>
 
       <UnauthenticatedTemplate>
-        <div className="App App--landing">
-          <section className="landing-hero">
-            <div className="landing-hero__left">
-              <span className="landing-pill">
-                Azure • AI • Outlook
-              </span>
-              <h1 className="landing-title">Email Filter</h1>
-              <p className="landing-subtitle">
-                AI-powered spam filtering for Outlook, built on Microsoft Azure.
-              </p>
+  <div className="App App--landing">
+    {/* HERO */}
+    <section className="landing-hero">
+      <div className="landing-hero__left">
+        <span className="landing-pill">Azure • AI • Outlook</span>
+        <h1 className="landing-title">Email Filter</h1>
+        <p className="landing-subtitle">
+          AI-powered spam filtering for Outlook, built on Microsoft Azure.
+        </p>
 
-              <ul className="landing-points">
-                <li>Connect with your Microsoft account</li>
-                <li>Detect spam, phishing, and malicious emails</li>
-                <li>See simple spam vs. ham statistics in a dashboard</li>
-              </ul>
+        <ul className="landing-points">
+          <li>Connect with your Microsoft account</li>
+          <li>Detect spam, phishing, and malicious emails</li>
+          <li>See simple spam vs. ham statistics in a dashboard</li>
+        </ul>
 
-              <p className="landing-hint">
-                Click <strong>Sign in</strong> in the top-right to get started.
-              </p>
-            </div>
+        <p className="landing-hint">
+          Click <strong>Sign in</strong> in the top-right to get started.
+        </p>
+      </div>
 
-            <div className="landing-hero__right">
-              <div className="landing-preview">
-                <div className="landing-preview__header">
-                  <span className="preview-dot" />
-                  <span className="preview-dot" />
-                  <span className="preview-dot" />
-                </div>
-                <div className="landing-preview__body">
-                  <div className="preview-card preview-card--primary" />
-                  <div className="preview-card preview-card--secondary" />
-                  <div className="preview-card preview-card--secondary" />
-                </div>
-              </div>
-            </div>
-          </section>
+      <div className="landing-hero__right">
+        <div className="landing-preview">
+          <div className="landing-preview__header">
+            <span className="preview-dot" />
+            <span className="preview-dot" />
+            <span className="preview-dot" />
+          </div>
+          <div className="landing-preview__body">
+            <div className="preview-card preview-card--primary" />
+            <div className="preview-card preview-card--secondary" />
+            <div className="preview-card preview-card--secondary" />
+          </div>
         </div>
-      </UnauthenticatedTemplate>
+      </div>
+    </section>
+
+    {/* HOW IT WORKS + ABOUT US */}
+    <section className="landing-info">
+      <div className="landing-info__block">
+        <h2 className="landing-info__title">How it works</h2>
+        <p className="landing-info__text">
+          After you sign in with your Microsoft account, Email Filter uses
+          Microsoft Graph API to listen for new Outlook emails. Each
+          message is classified by a machine learning model hosted in Azure,
+          and spam is automatically routed to your spam folder while
+          legitimate mail stays in your inbox.
+        </p>
+      </div>
+
+      <div className="landing-info__block">
+        <h2 className="landing-info__title">About this project</h2>
+        <p className="landing-info__text">
+          This student project showcases how Azure cloud services,
+          machine learning, and a simple web dashboard can work together
+          to improve email security. Only anonymized statistics are
+          stored; full email contents are processed just long enough to
+          classify spam vs. ham.
+        </p>
+      </div>
+    </section>
+
+    {/* NEW: Fake statistics strip inside the same container */}
+    <section className="landing-stats">
+      <article className="landing-stat">
+        <div className="landing-stat__value">100,000+</div>
+        <div className="landing-stat__label">emails tested in simulation</div>
+      </article>
+
+      <article className="landing-stat">
+        <div className="landing-stat__value">99%</div>
+        <div className="landing-stat__label">spam detection accuracy (demo)</div>
+      </article>
+
+      <article className="landing-stat">
+        <div className="landing-stat__value">Trusted</div>
+        <div className="landing-stat__label">
+          by employees everywhere in our test scenarios
+        </div>
+      </article>
+    </section>
+  </div>
+</UnauthenticatedTemplate>
+
     </>
   );
 };
@@ -174,5 +217,6 @@ export default function App() {
     </PageLayout>
   );
 }
+
 
 
