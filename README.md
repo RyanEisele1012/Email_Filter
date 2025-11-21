@@ -31,3 +31,4 @@ This project demonstrates concepts in:
 
 ---
 
+Created from Microsoft's React-SPA + MSAL Quick Setup template.
