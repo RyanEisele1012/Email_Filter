@@ -1,11 +1,18 @@
-/* src/App.css */
-/* Intentionally minimal; pages handle layout & colors */
-
-/* Make sure root takes full width & height */
-#root {
-  width: 100%;
-  min-height: 100vh;
-  margin: 0;
-  padding: 0;
+.App {
+  text-align: center;
+  padding: 8px;
 }
 
+.navbarStyle {
+  padding: .5rem 1rem !important
+}
+
+.title{
+  text-align: center;
+  padding: 8px;
+}
+
+.profileContent {
+  padding: 8px;
+
+}
