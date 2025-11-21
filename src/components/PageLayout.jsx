@@ -20,12 +20,7 @@ export const PageLayout = (props) => {
             <span className="navbar-brand-text">Email Filter</span>
           </div>
 
-          <nav className="navbar-links">
-            <span className="navbar-link">Home</span>
-            <span className="navbar-link">How it works</span>
-            <span className="navbar-link">Dashboard</span>
-          </nav>
-
+          {/* Removed nav headings – just logo + auth button now */}
           <div className="navbar-actions">
             {isAuthenticated ? <SignOutButton /> : <SignInButton />}
           </div>
@@ -36,4 +31,5 @@ export const PageLayout = (props) => {
     </>
   );
 };
+
 
