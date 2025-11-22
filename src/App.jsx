@@ -35,7 +35,9 @@ const DashboardContent = () => {
         account: accounts[0],
       })
       .then((response) => {
-        getUserData(response.accessToken).then((response) =>
+        // console.log(response) 
+        const token = response;
+        getUserData(token.accessToken).then((response) =>
           setGraphData(response)
         );
       });

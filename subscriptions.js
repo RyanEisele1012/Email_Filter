@@ -8,12 +8,12 @@ const NOTIFICATION_URI = process.env.NOTIFICATION_URI
 /**
  * Creates a subscription to listen to changes in user's inbox using Graph API.
  * @param {string} accessToken - Microsoft Graph access token
- * @param {string} userId - The ID of the user (usually "me" for signed-in user)
+ * @param {string} uniqueId - The ID of the user (usually "me" for signed-in user)
  */
-async function createSubscription(accessToken, userId) {
+async function createSubscription(accessToken, uniqueId) {
     //Check if subsciption already exists and if it is, return it
-    if (SUBSCRIPTION_TRACKER.has(userId))
-        return SUBSCRIPTION_TRACKER.get(userId);
+    if (SUBSCRIPTION_TRACKER.has(uniqueId))
+        return SUBSCRIPTION_TRACKER.get(uniqueId);
 
     //Otherwise, create a new subscription
     const headers = new Headers();
@@ -23,7 +23,7 @@ async function createSubscription(accessToken, userId) {
     const body = JSON.stringify({
         changeType: "created", // only new emails
         notificationUrl: NOTIFICATION_URI,
-        resource: `/users/${userId}/mailFolders/inbox/messages`,
+        resource: `/users/${uniqueId}/mailFolders/inbox/messages`,
         expirationDateTime: new Date(Date.now() + INITIAL_INTERVAL).toISOString(), // 1 hour from now
         clientState: uuidv4() // optional, used to validate notifications
     });
@@ -37,8 +37,8 @@ async function createSubscription(accessToken, userId) {
     return fetch("https://graph.microsoft.com/v1.0/subscriptions", options)
         .then(response => {
             const subscriptionId = response.id
-            SUBSCRIPTION_TRACKER.set(userId, subscriptionId)
-            console.log(`[Subscription] Created: ${subscriptionId} for ${userId}`);
+            SUBSCRIPTION_TRACKER.set(uniqueId, subscriptionId)
+            console.log(`[Subscription] Created: ${subscriptionId} for User ${uniqueId}`);
         })
         .catch(error => {
             console.log("[Webhook] Create failed:", error);
@@ -49,12 +49,12 @@ async function createSubscription(accessToken, userId) {
 /**
  * Renews an existing subscription using Graph API.
  * @param {string} accessToken - Microsoft Graph access token
- * @param {string} userId - The ID of the user (usually "me" for signed-in user)
+ * @param {string} uniqueId - The ID of the user (usually "me" for signed-in user)
  * @param {string} subscriptionId - The ID of the subscription to renew
  */
-async function renewSubscription(accessToken, userId, subscriptionId) {
+async function renewSubscription(accessToken, uniqueId, subscriptionId) {
     //Check if there's an active subscription to renew
-    if (!SUBSCRIPTION_TRACKER.has(userId))
+    if (!SUBSCRIPTION_TRACKER.has(uniqueId))
         return;
 
     //If there is, renew the subscription
@@ -107,6 +107,7 @@ async function deleteSubscription(accessToken, subscriptionId) {
             const errorData = await response.json();
             throw new Error(JSON.stringify(errorData));
         }
+        SUBSCRIPTION_TRACKER.delete(subscriptionId)
         return { success: true };
     } catch (error) {
         console.error("Error deleting subscription:", error);
@@ -128,5 +129,7 @@ module.exports = {
     createSubscription,
     renewSubscription,
     deleteSubscription,
-    emailListener
+    emailListener,
+    SUBSCRIPTION_TRACKER
+
 };

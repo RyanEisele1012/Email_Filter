@@ -2,7 +2,7 @@ require('dotenv').config();
 const { jwtDecode } = require('jwt-decode');
 const express = require('express');
 const { MongoClient, ServerApiVersion } = require('mongodb');
-const { createSubscription, renewSubscription, deleteSubscription } = require('./subscriptions.js')
+const { createSubscription, deleteSubscription, emailListener, SUBSCRIPTION_TRACKER } = require('./subscriptions.js')
 
 const SERVER_PORT = process.env.SERVER_PORT
 const app = express();
@@ -37,22 +37,19 @@ connectToDatabase()
 
 //Get stats from database
 app.post('/get-stats', async (req, res) => {
-  //Check if ID Token exists in request. Needed for user ID.
-  const idToken = jwtDecode(req.body.idToken);
+  //Check if uniqueId from token exists in request.
+  const uniqueId = req.body.uniqueId;
 
-  if (!idToken)
-    res.status(400).send("Body parameter idToken is missing. Please try again.");
-
-  //Extract the user ID. It's the unique identifier for the DB.
-  const userId = idToken.oid;
+  if (!uniqueId)
+    res.status(400).send("Body parameter token is missing. Please try again.");
 
   //Query DB for User Data using ID
-  const query = { _id: userId }
+  const query = { _id: uniqueId }
   const userData = await client.db('email-filter-db').collection('user-data').findOne(query)
   if (!userData) {
     //No data found, set up initial data
     const initData = {
-      _id: userId,
+      _id: uniqueId,
       stats: {
         totalEmails: 0,
         numSpamEmails: 0,
@@ -76,14 +73,14 @@ app.post('/get-stats', async (req, res) => {
 app.post('/create-subscription', async (req, res) => {
   //Check if ID Token exists in request. Needed to set up subscription.
   const accessToken = req.body.accessToken;
-  const userId = req.body.uniqueId;
+  const uniqueId = req.body.uniqueId;
 
-  if (!accessToken)
-    res.status(400).send("Body parameter accessToken is missing. Please try again.");
+  if (!accessToken || !uniqueId)
+    res.status(400).send("Body parameter token is missing. Please try again.");
 
   else {
     try {
-      createSubscription(accessToken, userId)
+      createSubscription(accessToken, uniqueId)
       res.status(202).send("Subscription successfully created for incoming mail!")
     }
     catch (error) {
@@ -93,8 +90,32 @@ app.post('/create-subscription', async (req, res) => {
 
 })
 
-// Listener webhook
+//Delete subscription
+app.post('/delete-subscription', async (req, res) => {
+  //Check if ID Token exists in request. Needed to set up subscription.
+  const accessToken = req.body.accessToken;
+  const uniqueId = req.body.uniqueId;
+  const subscriptionId = SUBSCRIPTION_TRACKER.get(uniqueId)
 
+  if (!accessToken || !uniqueId)
+    res.status(400).send("Body parameter token is missing. Please try again.");
+
+  else {
+    try {
+      deleteSubscription(accessToken, subscriptionId)
+      res.status(202).send(`Subscription with id ${subscriptionId} successfully deleted!`)
+      SUBSCRIPTION_TRACKER.delete(uniqueId)
+    }
+    catch (error) {
+      res.status(400).send(`Error deleting subscription: ${error}`)
+    }
+  }
+
+})
+
+
+// Listener webhook
+app.post('/listen', emailListener)
 
 
 
