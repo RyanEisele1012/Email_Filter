@@ -2,6 +2,7 @@ require('dotenv').config();
 const { jwtDecode } = require('jwt-decode');
 const express = require('express');
 const { MongoClient, ServerApiVersion } = require('mongodb');
+const { createSubscription, renewSubscription, deleteSubscription } = require('./subscriptions.js')
 
 const SERVER_PORT = process.env.SERVER_PORT
 const app = express();
@@ -46,9 +47,9 @@ app.post('/get-stats', async (req, res) => {
   const userId = idToken.oid;
 
   //Query DB for User Data using ID
-  const query = {_id: userId}
+  const query = { _id: userId }
   const userData = await client.db('email-filter-db').collection('user-data').findOne(query)
-  if (!userData) { 
+  if (!userData) {
     //No data found, set up initial data
     const initData = {
       _id: userId,
@@ -72,13 +73,28 @@ app.post('/get-stats', async (req, res) => {
 })
 
 //Create subscription
-app.post('/create-subscription', (req, res) => {
-  //Check if token exists in request
+app.post('/create-subscription', async (req, res) => {
+  //Check if ID Token exists in request. Needed to set up subscription.
+  const accessToken = req.body.accessToken;
+  const userId = req.body.uniqueId;
 
-  //Pass token to 
+  if (!accessToken)
+    res.status(400).send("Body parameter accessToken is missing. Please try again.");
+
+  else {
+    try {
+      createSubscription(accessToken, userId)
+      res.status(202).send("Subscription successfully created for incoming mail!")
+    }
+    catch (error) {
+      res.status(400).send(`Error creating subscription: ${error}`)
+    }
+  }
+
 })
 
-// Webhook
+// Listener webhook
+
 
 
 
