@@ -1,4 +1,3 @@
-require('dotenv').config();
 const { v4: uuidv4 } = require('uuid');
 
 const SUBSCRIPTION_TRACKER = new Map();
@@ -11,7 +10,7 @@ const NOTIFICATION_URI = process.env.NOTIFICATION_URI
  * @param {string} accessToken - Microsoft Graph access token
  * @param {string} userId - The ID of the user (usually "me" for signed-in user)
  */
-export async function createSubscription(accessToken, userId) {
+async function createSubscription(accessToken, userId) {
     //Check if subsciption already exists and if it is, return it
     if (SUBSCRIPTION_TRACKER.has(userId))
         return SUBSCRIPTION_TRACKER.get(userId);
@@ -53,7 +52,7 @@ export async function createSubscription(accessToken, userId) {
  * @param {string} userId - The ID of the user (usually "me" for signed-in user)
  * @param {string} subscriptionId - The ID of the subscription to renew
  */
-export async function renewSubscription(accessToken, userId, subscriptionId) {
+async function renewSubscription(accessToken, userId, subscriptionId) {
     //Check if there's an active subscription to renew
     if (!SUBSCRIPTION_TRACKER.has(userId))
         return;
@@ -93,7 +92,7 @@ export async function renewSubscription(accessToken, userId, subscriptionId) {
  * @param {string} accessToken - Microsoft Graph access token
  * @param {string} subscriptionId - The ID of the subscription to delete
  */
-export async function deleteSubscription(accessToken, subscriptionId) {
+async function deleteSubscription(accessToken, subscriptionId) {
     const headers = new Headers();
     headers.append("Authorization", `Bearer ${accessToken}`);
 
@@ -117,9 +116,17 @@ export async function deleteSubscription(accessToken, subscriptionId) {
 
 
 // Webhook handler - This is where notifications for new emails will be picked up
-export async function emailListener(req, res) {
+async function emailListener(req, res) {
     const notificationList = req.body?.value || [];
     console.log(JSON.stringify(notificationList))
 
     res.status(202).send();
 }
+
+//Proper export format if using require())
+module.exports = {
+    createSubscription,
+    renewSubscription,
+    deleteSubscription,
+    emailListener
+};
