@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { jwtDecode } = require('jwt-decode');
 const express = require('express');
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
@@ -35,13 +36,14 @@ connectToDatabase()
 
 //Get stats from database
 app.post('/get-stats', async (req, res) => {
-  //Check if token exists in request. Needed for user ID.
-  const accessToken = req.body.accessToken;
-  if (!accessToken)
-    res.status(400).send("Access token missing in body.");
+  //Check if ID Token exists in request. Needed for user ID.
+  const idToken = jwtDecode(req.body.idToken);
+
+  if (!idToken)
+    res.status(400).send("Body parameter idToken is missing. Please try again.");
 
   //Extract the user ID. It's the unique identifier for the DB.
-  const userId = accessToken.id;
+  const userId = idToken.oid;
 
   //Query DB for User Data using ID
   const query = {_id: userId}
