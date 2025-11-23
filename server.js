@@ -139,6 +139,95 @@ app.post('/save-access-token', async (req, res) => {
     res.status(400).send("Something went wrong when saving access token. Check Mongo.")
 })
 
+//Get email
+app.post('/get-email', async (req, res) => {
+  // Get messageId and uniqueId from req.body
+  let messageId = req.body.messageId;
+  let uniqueId = req.body.uniqueId;
+  let accessToken = "";
+  let subject = "";
+  let body = "";
+
+  // Ensure required fields are present in the request body
+  if (!messageId || !uniqueId) {
+    console.log("Missing required fields: messageId or uniqueId");
+    return res.status(400).send("Missing required fields: messageId or uniqueId");
+  }
+
+  // Get access token from DB
+  try {
+    const response = await client.db('email-filter-db').collection('access-tokens').findOne({ _id: uniqueId });
+
+    if (response) {
+      console.log(`Token for user ${uniqueId} found: ${response.accessToken}`);
+      accessToken = response.accessToken;
+    } else {
+      console.log("No token found for the given uniqueId.");
+      return res.status(400).send("No token found for the given uniqueId.");
+    }
+
+  } catch (error) {
+    console.log(`Error getting access token from Mongo: ${error}`);
+    return res.status(400).send("Error getting access token from Mongo.");
+  }
+
+  // Make query to Graph API for the email to get its subject + body
+  try {
+    const response = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${messageId}?$select=subject,body`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Prefer': 'outlook.body-content-type=text',
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log(`Error fetching message: ${response.status} ${response.statusText} - ${errorText}`);
+      return res.status(400).send(`Error fetching message: ${response.status} ${response.statusText}`);
+    }
+
+    const message = await response.json();
+
+    if (!message || !message.subject || !message.body) {
+      console.log('No subject or body found in message response:', message);
+      return res.status(400).send('No subject or body found in message response.');
+    }
+
+    console.log('Message retrieved:', message);
+    subject = message.subject;
+    body = message.body.content;
+
+  } catch (error) {
+    console.error('Error:', error);
+    return res.status(400).send('Error processing the message.');
+  }
+
+  // Pass the subject, body, uniqueId, and messageId to /predict-and-act
+  const requestBody = {
+    subject: subject,
+    body: body,
+    messageId: messageId,
+    uniqueId: uniqueId
+  };
+
+  // No need to await the response from this as it's not needed
+  fetch('http://localhost:8080/predict-and-act', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  }).catch(error => {
+    console.error('Error sending data to /predict-and-act:', error);
+    return res.status(400).send("Error sending data to /predict-and-act.");
+  });
+
+  res.status(200).send("Email retrieved. Moving on to prediction phase...");
+});
+
+
 //Classifier + Stat Updater
 app.post('/predict-and-act', async (req, res) => {
   //Requires subject + body + messageId + uniqueId in req.body
@@ -158,12 +247,12 @@ app.post('/predict-and-act', async (req, res) => {
       accessToken = response.accessToken;
     } else {
       console.log("No token found for the given uniqueId.");
-      return res.status(400).send("No token found for the given uniqueId."); 
+      return res.status(400).send("No token found for the given uniqueId.");
     }
 
   } catch (error) {
     console.log(`Error getting access token from Mongo: ${error}`);
-    return res.status(400).send("Error getting access token from Mongo."); 
+    return res.status(400).send("Error getting access token from Mongo.");
   }
 
 
@@ -202,7 +291,7 @@ app.post('/predict-and-act', async (req, res) => {
 
   } catch (error) {
     console.error('Error classifying email:', error);
-    return res.status(400).send("Error classifying email."); 
+    return res.status(400).send("Error classifying email.");
   }
 
   //Take actions in DB and Outlook based on classification results
@@ -226,7 +315,7 @@ app.post('/predict-and-act', async (req, res) => {
     }
     catch (error) {
       console.log(`Error updating DB stats: ${error}`);
-      return res.status(400).send("Error updating DB stats for ham email."); 
+      return res.status(400).send("Error updating DB stats for ham email.");
     }
   }
 
@@ -234,7 +323,7 @@ app.post('/predict-and-act', async (req, res) => {
     //Updating the DB
     try {
       const response = await client.db('email-filter-db').collection('user-data').updateOne(
-        { _id: uniqueId }, 
+        { _id: uniqueId },
         {
           $inc: {
             "stats.totalEmails": 1,
@@ -250,7 +339,7 @@ app.post('/predict-and-act', async (req, res) => {
     }
     catch (error) {
       console.log(`Error updating DB stats: ${error}`);
-      return res.status(400).send("Error updating DB stats for spam email."); 
+      return res.status(400).send("Error updating DB stats for spam email.");
     }
 
     //Moving email to junk folder in Outlook
@@ -269,16 +358,16 @@ app.post('/predict-and-act', async (req, res) => {
 
       // Handle response status and body
       if (response.ok) {
-        const responseBody = await response.json(); 
+        const responseBody = await response.json();
         console.log('Email declared spam moved to junk folder.', responseBody);
       } else {
-        const errorText = await response.text();  
+        const errorText = await response.text();
         console.log(`Error moving mail: ${response.status} ${response.statusText}`, errorText);
-        return res.status(400).send("Error moving mail to junk folder in Outlook."); 
+        return res.status(400).send("Error moving mail to junk folder in Outlook.");
       }
     } catch (error) {
       console.error('Fetch failed:', error);
-      return res.status(400).send("Failed to move email to junk folder in Outlook."); 
+      return res.status(400).send("Failed to move email to junk folder in Outlook.");
     }
   }
 
