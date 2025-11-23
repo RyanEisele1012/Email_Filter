@@ -13,12 +13,19 @@ import {
 import "./App.css";
 import Button from "react-bootstrap/Button";
 
+// import { useCreateSubscription } from "./hooks/useCreateSubscription";
+import { useSaveAccessToken } from "./hooks/useSaveAccessToken";
+
 /**
  * Dashboard content for authenticated users
  */
 const DashboardContent = () => {
   const { instance, accounts } = useMsal();
   const [graphData, setGraphData] = useState(null);
+
+  // Hooks- Should run once when there's a logged in user
+  useSaveAccessToken();        
+  // useCreateSubscription();      
 
   // Dummy analytics data for now (hook up to Azure later)
   const totalEmails = 250;
