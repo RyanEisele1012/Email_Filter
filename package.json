@@ -4,8 +4,10 @@
   "private": true,
   "dependencies": {
     "@azure/msal-browser": "^2.32.2",
+    "@azure/msal-node": "^3.8.3",
     "@azure/msal-react": "^1.5.2",
     "bootstrap": "^5.2.3",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "jwt-decode": "^4.0.0",
     "mongodb": "^7.0.0",

@@ -13,7 +13,7 @@ import { LogLevel } from "@azure/msal-browser";
 
 export const msalConfig = {
     auth: {
-        clientId: "0a54140c-33f2-491e-90bf-1861d00354b3",
+        clientId: "21518d1b-c532-471b-a232-899f7572efbe",
         authority: "https://login.microsoftonline.com/common",
         redirectUri: "http://localhost:3000",
     },
@@ -55,7 +55,7 @@ export const msalConfig = {
  * https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-permissions-and-consent#openid-connect-scopes
  */
 export const loginRequest = {
-    scopes: ["User.Read", "Mail.Read"]
+    scopes: ["User.Read", "Mail.ReadWrite"]
 };
 
 /**
