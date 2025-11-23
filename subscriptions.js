@@ -1,6 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
 
-const SUBSCRIPTION_TRACKER = new Map();
 const RENEWAL_INTERVAL = 50 * 60 * 1000; //50 minutes in miliseconds
 const INITIAL_INTERVAL = 60 * 60 * 1000; //60 minutes in miliseconds
 const NOTIFICATION_URI = process.env.NOTIFICATION_URI
@@ -9,23 +8,22 @@ const NOTIFICATION_URI = process.env.NOTIFICATION_URI
  * Creates a subscription to listen to changes in user's inbox using Graph API.
  * @param {string} accessToken - Microsoft Graph access token
  * @param {string} uniqueId - The ID of the user (usually "me" for signed-in user)
+ * 
+ * @returns {string} subscriptionId - The ID of the subscription created for the user's inbox
  */
 async function createSubscription(accessToken, uniqueId) {
-    //Check if subsciption already exists and if it is, return it
-    if (SUBSCRIPTION_TRACKER.has(uniqueId))
-        return SUBSCRIPTION_TRACKER.get(uniqueId);
-
-    //Otherwise, create a new subscription
+    // This should only be ran after checking Mongo for existing subId
+    // Otherwise, create a new subscription
     const headers = new Headers();
     headers.append("Authorization", `Bearer ${accessToken}`);
-    headers.append("Content-Type", "application/json")
+    headers.append("Content-Type", "application/json");
 
     const body = JSON.stringify({
-        changeType: "created", // only new emails
+        changeType: "created", // Only new emails
         notificationUrl: NOTIFICATION_URI,
-        resource: `/users/${uniqueId}/mailFolders/inbox/messages`,
+        resource: `/me/mailFolders/inbox/messages`,
         expirationDateTime: new Date(Date.now() + INITIAL_INTERVAL).toISOString(), // 1 hour from now
-        clientState: uuidv4() // optional, used to validate notifications
+        clientState: uuidv4() // Optional, used to validate notifications
     });
 
     const options = {
@@ -34,16 +32,43 @@ async function createSubscription(accessToken, uniqueId) {
         body: body
     };
 
-    return fetch("https://graph.microsoft.com/v1.0/subscriptions", options)
-        .then(response => {
-            const subscriptionId = response.id
-            SUBSCRIPTION_TRACKER.set(uniqueId, subscriptionId)
+    try {
+        // Make the request to the Microsoft Graph API
+        const response = await fetch("https://graph.microsoft.com/v1.0/subscriptions", options);
+
+        // Log status code and status text for debugging
+        console.log("[Webhook] Response Status:", response.status, response.statusText);
+
+        // Check if the response status is not OK
+        if (!response.ok) {
+            // If response is not OK, log the response and throw an error
+            const errorText = await response.text();  // Read response text to inspect the error message
+            throw new Error(`Error creating subscription: ${response.status} ${response.statusText}, ${errorText}`);
+        }
+
+        // Parse the JSON response from the Microsoft Graph API
+        const subscription = await response.json();
+
+        // Debugging: Log the full response to understand the structure
+        console.log("[Webhook] Create Subscription Response:", subscription);
+
+        // Check if 'id' exists in the subscription response
+        if (subscription && subscription.id) {
+            const subscriptionId = subscription.id; // Extract subscriptionId
             console.log(`[Subscription] Created: ${subscriptionId} for User ${uniqueId}`);
-        })
-        .catch(error => {
-            console.log("[Webhook] Create failed:", error);
-        });
+            return subscriptionId; // Return the subscriptionId for further use
+        } else {
+            throw new Error("Subscription creation failed: No subscription id in response");
+        }
+
+    } catch (error) {
+        // Log error details
+        console.log("[Webhook] Create failed:", error);
+        // Handle or rethrow the error if necessary
+        return null; // Ensure we return null if the subscription creation fails
+    }
 }
+
 
 
 /**
@@ -53,10 +78,6 @@ async function createSubscription(accessToken, uniqueId) {
  * @param {string} subscriptionId - The ID of the subscription to renew
  */
 async function renewSubscription(accessToken, uniqueId, subscriptionId) {
-    //Check if there's an active subscription to renew
-    if (!SUBSCRIPTION_TRACKER.has(uniqueId))
-        return;
-
     //If there is, renew the subscription
     const headers = new Headers();
     headers.append("Authorization", `Bearer ${accessToken}`);
@@ -91,6 +112,7 @@ async function renewSubscription(accessToken, uniqueId, subscriptionId) {
  * Deletes an existing subscription using Graph API.
  * @param {string} accessToken - Microsoft Graph access token
  * @param {string} subscriptionId - The ID of the subscription to delete
+ * @returns {string} confirmation - Can either be succesful object or null.
  */
 async function deleteSubscription(accessToken, subscriptionId) {
     const headers = new Headers();
@@ -107,8 +129,8 @@ async function deleteSubscription(accessToken, subscriptionId) {
             const errorData = await response.json();
             throw new Error(JSON.stringify(errorData));
         }
-        SUBSCRIPTION_TRACKER.delete(subscriptionId)
-        return { success: true };
+        let confirmation = { success: true }
+        return confirmation;
     } catch (error) {
         console.error("Error deleting subscription:", error);
         throw error;
@@ -130,6 +152,4 @@ module.exports = {
     renewSubscription,
     deleteSubscription,
     emailListener,
-    SUBSCRIPTION_TRACKER
-
 };
