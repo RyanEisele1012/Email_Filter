@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { MongoClient, ServerApiVersion } = require('mongodb');
-const { createSubscription, deleteSubscription, emailListener, SUBSCRIPTION_TRACKER } = require('./subscriptions.js')
+const { createSubscription, deleteSubscription, emailListener } = require('./subscriptions.js')
 const cors = require("cors");
 
 const SERVER_PORT = process.env.SERVER_PORT
@@ -79,44 +79,105 @@ app.post('/get-stats', async (req, res) => {
 
 //Create subscription
 app.post('/create-subscription', async (req, res) => {
-  //Check if ID Token exists in request. Needed to set up subscription.
+  //Check if accessToken and uniqueId exists in request. Needed to set up subscription.
   const accessToken = req.body.accessToken;
   const uniqueId = req.body.uniqueId;
 
   if (!accessToken || !uniqueId)
     res.status(400).send("Body parameter token is missing. Please try again.");
 
-  else {
-    try {
-      createSubscription(accessToken, uniqueId)
-      res.status(202).send("Subscription successfully created for incoming mail!")
+  //Check the DB for active subscription
+  try {
+    const response = await client.db('email-filter-db').collection('subscription-ids').findOne({ _id: uniqueId });
+
+    //If there is one, do not create another subcription
+    if (response && response.subId != null) { //findOne returns null if it doesn't find anything
+      res.status(208).send("Subscription already stored in DB. Denying request to create another.")
     }
-    catch (error) {
-      res.status(400).send(`Error creating subscription: ${error}`)
+    //If there isn't, then create a new subscription
+    else {
+      //Creating new sub
+      const subId = await createSubscription(accessToken, uniqueId)
+
+      //Pushing the new sub ID to the DB
+      try {
+        const pushResponse = await client.db('email-filter-db').collection('subscription-ids').updateOne(
+          { "_id": uniqueId },
+          { $set: { "subId": subId } },
+          { upsert: true }
+        );
+
+        // Check if the update was successful (matched or inserted a document)
+        if (pushResponse.modifiedCount > 0 || pushResponse.upsertedCount > 0) {
+          console.log('Document updated successfully');
+        }
+        else {
+          return res.status(400).json("Error pushing new subId to the database.");
+        }
+      } catch (error) {
+        console.error('Error updating subscription:', error);
+        return res.status(400).json({ error: 'Failed to update subscription', details: error.message });
+      }
+
+      //Send successful completion
+      res.status(202).send(`New subscription with ID ${subId} created for User with ID ${uniqueId}`)
     }
+  } catch (error) {
+    console.error('Error creating subscription:', error);
+    return res.status(400).send(`An error occurred while creating subscription: ${error}`);
   }
 
 })
 
 //Delete subscription
 app.post('/delete-subscription', async (req, res) => {
-  //Check if ID Token exists in request. Needed to set up subscription.
+  //Check if accessToken and uniqueId exists in request. Needed to delete subscription.
   const accessToken = req.body.accessToken;
-  const uniqueId = req.body.uniqueId;
-  const subscriptionId = SUBSCRIPTION_TRACKER.get(uniqueId)
+  const uniqueId = req.body.uniqueId
+  let subId = ""
 
-  if (!accessToken || !uniqueId)
+  if (!accessToken)
     res.status(400).send("Body parameter token is missing. Please try again.");
 
-  else {
-    try {
-      deleteSubscription(accessToken, subscriptionId)
-      res.status(202).send(`Subscription with id ${subscriptionId} successfully deleted!`)
-      SUBSCRIPTION_TRACKER.delete(uniqueId)
+  //Get the subId from the DB
+  try {
+    const response = await client.db('email-filter-db').collection('subscription-ids').findOne({ _id: uniqueId });
+
+    if (response) {
+      console.log(`SubId for user ${uniqueId} found: ${response.subId}`);
+      subId = response.subId;
+
+    } else {
+      console.log("No subscription found for the given uniqueId.");
+      return res.status(400).send("No subscription found for the given uniqueId.");
     }
-    catch (error) {
-      res.status(400).send(`Error deleting subscription: ${error}`)
+  } catch (error) {
+    console.log(`Error getting access token from Mongo: ${error}`);
+    return res.status(400).send("Error getting access token from Mongo.");
+  }
+
+  //Use the subId to delete the subscription
+  const deleteSubRequest = await deleteSubscription(accessToken, subId)
+  if (!deleteSubRequest)
+    res.status(400).send("Subscription deletion request using Graph API failed!")
+
+  //Remove current subId from the DB
+  try {
+    const response = await client.db('email-filter-db').collection('subscription-ids').deleteOne({ _id: uniqueId });
+
+    if (response.deletedCount > 0) {
+      // Successfully deleted the document
+      console.log('Subscription successfully removed');
+      return res.status(200).json({ message: 'Subscription removed successfully' });
+    } else {
+      // No document matched the _id (i.e., nothing to delete)
+      console.log('No matching subscription found');
+      return res.status(404).json({ message: 'No subscription found with the provided ID' });
     }
+  } catch (error) {
+    // Error occurred during the delete operation
+    console.error('Error removing subscription:', error);
+    return res.status(500).json({ error: 'Failed to remove subscription', details: error.message });
   }
 
 })
@@ -374,15 +435,54 @@ app.post('/predict-and-act', async (req, res) => {
   res.status(200).send("Action completed successfully.");
 })
 
-
-
-
-
-
-
 // Listener webhook
-app.post('/listen', emailListener)
+app.post('/listen', async (req, res) => {
+  // First, handle the validation request (GET method)
+  if (req.query?.validationToken) {
+    console.log('[Webhook] Validation');
+    return res.send(req.query.validationToken); // Respond with the validation token to complete the validation process
+  }
 
+  // Then handle the actual notifications (POST request from Microsoft Graph)
+  const notification = req.body;
+
+  // Log the incoming notification
+  console.log('[Webhook] Notification received:', await notification.value[0].resourceData);
+  let subId = notification.value[0].subscriptionId;
+  let messageId = notification.value[0].resourceData.id;
+  let uniqueId = ""
+
+  //Get uniqueId from subscription-ids collection in Mongo DB
+  try {
+    const response = await client.db('email-filter-db').collection('subscription-ids').findOne({ subId: subId });
+
+    if (!response) {
+      res.status(400).send("Subscription not found for subId: " + subId);
+    }
+
+    uniqueId = response._id;
+
+  } catch (error) {
+    res.status(400).send(`Error retrieving subId from database: + ${JSON.stringify(error)}`);
+  }
+
+  //Pass on messageId and uniqueId to /get-email
+  const body = { messageId: messageId, uniqueId: uniqueId}
+  fetch('http://localhost:8080/get-email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }).catch(error => {
+    console.error('Error sending data to /get-email:', error);
+    return res.status(400).send("Error sending data to /get-email.");
+  });
+
+
+  // Send a 202 Accepted response to acknowledge that the webhook was received
+  res.status(202).send("Notification received! Beginning email retrieval phase...");
+});
 
 
 // Start Server
