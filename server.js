@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { MongoClient, ServerApiVersion } = require('mongodb');
-const { createSubscription, deleteSubscription, emailListener } = require('./subscriptions.js')
+const { createSubscription, deleteSubscription } = require('./subscriptions.js')
 const cors = require("cors");
 
 const SERVER_PORT = process.env.SERVER_PORT
@@ -66,7 +66,16 @@ app.post('/get-stats', async (req, res) => {
     }
 
     //Insert it into db
-    client.db('email-filter-db').collection('user-data').insertOne(initData)
+    await client.db('email-filter-db').collection('user-data').updateOne(
+      { _id: initData.uniqueId },
+      {
+        $setOnInsert: {
+          stats: initData.stats,
+        }
+      },
+      { upsert: true }
+    );
+
     //Send it back to client - client can also set values to 0 initially too.
     res.status(202).send(JSON.stringify(initData))
   }
@@ -86,47 +95,28 @@ app.post('/create-subscription', async (req, res) => {
   if (!accessToken || !uniqueId)
     res.status(400).send("Body parameter token is missing. Please try again.");
 
-  //Check the DB for active subscription
+  //Create subscription and push its to DB
+  const subId = await createSubscription(accessToken, uniqueId)
+
+  //Pushing the new sub ID to the DB
   try {
-    const response = await client.db('email-filter-db').collection('subscription-ids').findOne({ _id: uniqueId });
+    const pushResponse = await client.db('email-filter-db').collection('subscription-ids').updateOne(
+      { "_id": uniqueId },
+      { $set: { "subId": subId } },
+      { upsert: true }
+    );
 
-    //If there is one, do not create another subcription
-    if (response && response.subId != null) { //findOne returns null if it doesn't find anything
-      res.status(208).send("Subscription already stored in DB. Denying request to create another.")
+    // Check if the update was successful (matched or inserted a document)
+    if (pushResponse.modifiedCount > 0 || pushResponse.upsertedCount > 0) {
+      console.log('Document updated successfully');
     }
-    //If there isn't, then create a new subscription
     else {
-      //Creating new sub
-      const subId = await createSubscription(accessToken, uniqueId)
-
-      //Pushing the new sub ID to the DB
-      try {
-        const pushResponse = await client.db('email-filter-db').collection('subscription-ids').updateOne(
-          { "_id": uniqueId },
-          { $set: { "subId": subId } },
-          { upsert: true }
-        );
-
-        // Check if the update was successful (matched or inserted a document)
-        if (pushResponse.modifiedCount > 0 || pushResponse.upsertedCount > 0) {
-          console.log('Document updated successfully');
-        }
-        else {
-          return res.status(400).json("Error pushing new subId to the database.");
-        }
-      } catch (error) {
-        console.error('Error updating subscription:', error);
-        return res.status(400).json({ error: 'Failed to update subscription', details: error.message });
-      }
-
-      //Send successful completion
-      res.status(202).send(`New subscription with ID ${subId} created for User with ID ${uniqueId}`)
+      return res.status(400).json("Error pushing new subId to the database.");
     }
   } catch (error) {
-    console.error('Error creating subscription:', error);
-    return res.status(400).send(`An error occurred while creating subscription: ${error}`);
+    console.error('Error updating subscription:', error);
+    return res.status(400).json({ error: 'Failed to update subscription', details: error.message });
   }
-
 })
 
 //Delete subscription
@@ -299,21 +289,14 @@ app.post('/predict-and-act', async (req, res) => {
   let uniqueId = req.body.uniqueId
   let messageId = req.body.messageId
 
-  // Getting the accessToken from Mongo
+  // Getting the accessToken from DB
   try {
     const response = await client.db('email-filter-db').collection('access-tokens').findOne({ _id: uniqueId });
-
-    if (response) {
-      console.log(`Token for user ${uniqueId} found: ${response.accessToken}`);
-      accessToken = response.accessToken;
-    } else {
-      console.log("No token found for the given uniqueId.");
-      return res.status(400).send("No token found for the given uniqueId.");
-    }
-
+    // console.log(`Token for user ${uniqueId} found: ${response.accessToken}`);
+    accessToken = response.accessToken;
   } catch (error) {
-    console.log(`Error getting access token from Mongo: ${error}`);
-    return res.status(400).send("Error getting access token from Mongo.");
+    console.log(`Error getting access token from DB: ${error}`);
+    return res.status(400).send("Error getting access token from DB.");
   }
 
 
@@ -335,21 +318,9 @@ app.post('/predict-and-act', async (req, res) => {
 
   try {
     const response = await fetch('http://44.192.67.235:5000/predict', options);
-
-    if (!response.ok) {
-      throw new Error(`Server responded with status ${response.status}: ${response.statusText}`);
-    }
-
     const classifier = await response.json();
-
-    // Validate the expected property
-    if (!classifier.label) {
-      throw new Error('Response does not contain a "label" property');
-    }
-
     console.log(`Email predicted as ${classifier.label}`);
     prediction = classifier.prediction
-
   } catch (error) {
     console.error('Error classifying email:', error);
     return res.status(400).send("Error classifying email.");
@@ -359,7 +330,7 @@ app.post('/predict-and-act', async (req, res) => {
   if (prediction === 0) { //Email declared ham
     try {
       //Updating the DB
-      const result = await client.db('email-filter-db').collection('user-data').updateOne(
+      await client.db('email-filter-db').collection('user-data').updateOne(
         { _id: uniqueId },
         {
           $inc: {
@@ -368,14 +339,9 @@ app.post('/predict-and-act', async (req, res) => {
           }
         }
       )
-
-      if (result.modifiedCount === 1)
-        console.log("Email was declared ham. Stats updated successfully.")
-      else
-        console.log("Email was declared ham but could not update stats.")
     }
     catch (error) {
-      console.log(`Error updating DB stats: ${error}`);
+      console.log(`Error updating DB stats for ham email: ${error}`);
       return res.status(400).send("Error updating DB stats for ham email.");
     }
   }
@@ -383,7 +349,7 @@ app.post('/predict-and-act', async (req, res) => {
   if (prediction === 1) { //Email declared spam
     //Updating the DB
     try {
-      const response = await client.db('email-filter-db').collection('user-data').updateOne(
+      await client.db('email-filter-db').collection('user-data').updateOne(
         { _id: uniqueId },
         {
           $inc: {
@@ -392,14 +358,9 @@ app.post('/predict-and-act', async (req, res) => {
           }
         }
       )
-
-      if (response.modifiedCount === 1)
-        console.log("Email was declared spam. Stats updated successfully.")
-      else
-        console.log("Email was declared spam but could not update stats.")
     }
     catch (error) {
-      console.log(`Error updating DB stats: ${error}`);
+      console.log(`Error updating DB stats for spam email: ${error}`);
       return res.status(400).send("Error updating DB stats for spam email.");
     }
 
@@ -418,70 +379,75 @@ app.post('/predict-and-act', async (req, res) => {
       );
 
       // Handle response status and body
-      if (response.ok) {
-        const responseBody = await response.json();
-        console.log('Email declared spam moved to junk folder.', responseBody);
-      } else {
-        const errorText = await response.text();
-        console.log(`Error moving mail: ${response.status} ${response.statusText}`, errorText);
-        return res.status(400).send("Error moving mail to junk folder in Outlook.");
-      }
+      const responseBody = await response.json();
+      console.log('Email declared spam moved to junk folder.', responseBody);
+
     } catch (error) {
       console.error('Fetch failed:', error);
       return res.status(400).send("Failed to move email to junk folder in Outlook.");
     }
   }
 
-  res.status(200).send("Action completed successfully.");
+  return res.status(200).send("Action completed successfully.");
 })
 
-// Listener webhook
 app.post('/listen', async (req, res) => {
-  // First, handle the validation request (GET method)
+  // Respond with the validation token to complete Subscription validation process
   if (req.query?.validationToken) {
     console.log('[Webhook] Validation');
-    return res.send(req.query.validationToken); // Respond with the validation token to complete the validation process
+    return res.type('text/plain').send(req.query.validationToken);
   }
-
-  // Then handle the actual notifications (POST request from Microsoft Graph)
-  const notification = req.body;
-
-  // Log the incoming notification
-  console.log('[Webhook] Notification received:', await notification.value[0].resourceData);
-  let subId = notification.value[0].subscriptionId;
-  let messageId = notification.value[0].resourceData.id;
-  let uniqueId = ""
-
-  //Get uniqueId from subscription-ids collection in Mongo DB
-  try {
-    const response = await client.db('email-filter-db').collection('subscription-ids').findOne({ subId: subId });
-
-    if (!response) {
-      res.status(400).send("Subscription not found for subId: " + subId);
-    }
-
-    uniqueId = response._id;
-
-  } catch (error) {
-    res.status(400).send(`Error retrieving subId from database: + ${JSON.stringify(error)}`);
-  }
-
-  //Pass on messageId and uniqueId to /get-email
-  const body = { messageId: messageId, uniqueId: uniqueId}
-  fetch('http://localhost:8080/get-email', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  }).catch(error => {
-    console.error('Error sending data to /get-email:', error);
-    return res.status(400).send("Error sending data to /get-email.");
-  });
-
 
   // Send a 202 Accepted response to acknowledge that the webhook was received
-  res.status(202).send("Notification received! Beginning email retrieval phase...");
+  res.status(202).send('');
+
+  // Then handle the actual notifications (POST request from Microsoft Graph)
+  (async () => {
+    try {
+      const notification = req.body;
+
+      // Log the incoming notification
+      if (!notification?.value?.[0]?.resourceData) {
+        console.warn('[Webhook] Invalid or empty notification payload');
+        return;
+      }
+
+      console.log('[Webhook] Notification received:', notification.value[0].resourceData);
+
+      const subId = notification.value[0].subscriptionId;
+      const messageId = notification.value[0].resourceData.id;
+      let uniqueId = "";
+
+      // Get uniqueId from subscription-ids collection in Mongo DB
+      const dbResult = await client
+        .db('email-filter-db')
+        .collection('subscription-ids')
+        .findOne({ subId });
+
+      if (!dbResult) {
+        console.warn(`Subscription not found for subId: ${subId}`);
+        return;
+      }
+
+      uniqueId = dbResult._id;
+
+      // Pass on messageId and uniqueId to /get-email
+      const body = { messageId, uniqueId };
+
+      fetch('http://localhost:8080/get-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }).catch(error => {
+        console.error('Error sending data to /get-email:', error);
+      });
+
+    } catch (error) {
+      console.error('[Webhook] Background processing failed:', error);
+    }
+  })();
 });
 
 

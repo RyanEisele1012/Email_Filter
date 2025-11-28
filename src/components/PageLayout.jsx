@@ -16,7 +16,9 @@ export const PageLayout = (props) => {
       <Navbar className="navbarStyle" expand="md">
         <div className="navbar-inner">
           <div className="navbar-left">
-            <span className="navbar-logo">▢</span>
+            <span className="navbar-logo d-flex align-items-center justify-content-center">
+              📧
+            </span>
             <span className="navbar-brand-text">Email Filter</span>
           </div>
 
@@ -31,5 +33,3 @@ export const PageLayout = (props) => {
     </>
   );
 };
-
-
