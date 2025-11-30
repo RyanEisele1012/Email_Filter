@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { MongoClient, ServerApiVersion } = require('mongodb');
-const { createSubscription, deleteSubscription } = require('./subscriptions.js')
+const { createSubscription, renewSubscription, RENEWAL_INTERVAL } = require('./subscriptions.js')
 const cors = require("cors");
 
 const SERVER_PORT = process.env.SERVER_PORT
@@ -86,91 +86,111 @@ app.post('/get-stats', async (req, res) => {
   }
 })
 
-//Create subscription
+// Create or reuse existing valid subscription
 app.post('/create-subscription', async (req, res) => {
-  //Check if accessToken and uniqueId exists in request. Needed to set up subscription.
-  const accessToken = req.body.accessToken;
-  const uniqueId = req.body.uniqueId;
+  const { accessToken, uniqueId } = req.body;
 
-  if (!accessToken || !uniqueId)
-    res.status(400).send("Body parameter token is missing. Please try again.");
-
-  //Create subscription and push its to DB
-  const subId = await createSubscription(accessToken, uniqueId)
-
-  //Pushing the new sub ID to the DB
-  try {
-    const pushResponse = await client.db('email-filter-db').collection('subscription-ids').updateOne(
-      { "_id": uniqueId },
-      { $set: { "subId": subId } },
-      { upsert: true }
-    );
-
-    // Check if the update was successful (matched or inserted a document)
-    if (pushResponse.modifiedCount > 0 || pushResponse.upsertedCount > 0) {
-      console.log('Document updated successfully');
-    }
-    else {
-      return res.status(400).json("Error pushing new subId to the database.");
-    }
-  } catch (error) {
-    console.error('Error updating subscription:', error);
-    return res.status(400).json({ error: 'Failed to update subscription', details: error.message });
-  }
-})
-
-//Delete subscription
-app.post('/delete-subscription', async (req, res) => {
-  //Check if accessToken and uniqueId exists in request. Needed to delete subscription.
-  const accessToken = req.body.accessToken;
-  const uniqueId = req.body.uniqueId
-  let subId = ""
-
-  if (!accessToken)
-    res.status(400).send("Body parameter token is missing. Please try again.");
-
-  //Get the subId from the DB
-  try {
-    const response = await client.db('email-filter-db').collection('subscription-ids').findOne({ _id: uniqueId });
-
-    if (response) {
-      console.log(`SubId for user ${uniqueId} found: ${response.subId}`);
-      subId = response.subId;
-
-    } else {
-      console.log("No subscription found for the given uniqueId.");
-      return res.status(400).send("No subscription found for the given uniqueId.");
-    }
-  } catch (error) {
-    console.log(`Error getting access token from Mongo: ${error}`);
-    return res.status(400).send("Error getting access token from Mongo.");
+  if (!accessToken || !uniqueId) {
+    return res.status(400).json({ error: "accessToken and uniqueId are required" });
   }
 
-  //Use the subId to delete the subscription
-  const deleteSubRequest = await deleteSubscription(accessToken, subId)
-  if (!deleteSubRequest)
-    res.status(400).send("Subscription deletion request using Graph API failed!")
-
-  //Remove current subId from the DB
   try {
-    const response = await client.db('email-filter-db').collection('subscription-ids').deleteOne({ _id: uniqueId });
+    // Check if user already has an active subscription ( this is accounting for page reloads)
+    const existing = await client
+      .db('email-filter-db')
+      .collection('subscription-ids')
+      .findOne({ _id: uniqueId });
 
-    if (response.deletedCount > 0) {
-      // Successfully deleted the document
-      console.log('Subscription successfully removed');
-      return res.status(200).json({ message: 'Subscription removed successfully' });
-    } else {
-      // No document matched the _id (i.e., nothing to delete)
-      console.log('No matching subscription found');
-      return res.status(404).json({ message: 'No subscription found with the provided ID' });
+    if (existing && existing.subId && existing.expirationDateTime) {
+      const expiry = new Date(existing.expirationDateTime);
+      if (expiry > new Date()) {
+        console.log(`[Subscription] Active subscription found for ${uniqueId}, reusing: ${existing.subId}`);
+        return res.status(200).json({
+          message: "Active subscription already exists",
+          subscriptionId: existing.subId,
+          expiresAt: existing.expirationDateTime
+        });
+      } else {
+        console.log(`[Subscription] Expired subscription found, will replace: ${existing.subId}`);
+      }
     }
-  } catch (error) {
-    // Error occurred during the delete operation
-    console.error('Error removing subscription:', error);
-    return res.status(500).json({ error: 'Failed to remove subscription', details: error.message });
-  }
 
-})
+    // Create new subscription
+    const result = await createSubscription(accessToken, uniqueId);
+
+    if (!result) {
+      return res.status(500).json({ error: "Failed to create subscription with Graph API" });
+    }
+
+    // Save or update subscription info (with expiration)
+    await client
+      .db('email-filter-db')
+      .collection('subscription-ids')
+      .updateOne(
+        { _id: uniqueId },
+        {
+          $set: {
+            subId: result.subscriptionId,
+            expirationDateTime: result.expirationDateTime
+          }
+        },
+        { upsert: true }
+      );
+
+    console.log(`[Subscription] New subscription saved for ${uniqueId}: ${result.subscriptionId}`);
+
+    return res.status(201).json({
+      message: "Subscription created successfully",
+      subscriptionId: result.subscriptionId,
+      expiresAt: result.expirationDateTime
+    });
+
+  } catch (error) {
+    console.error("[/create-subscription] Error:", error);
+    return res.status(500).json({ error: "Internal server error", details: error.message });
+  }
+});
+
+//Deleting a subscription
+// app.post('/delete-subscription', async (req, res) => {
+//   const { accessToken, uniqueId } = req.body;
+
+//   if (!accessToken || !uniqueId) {
+//     return res.status(400).json({ error: "accessToken and uniqueId required" });
+//   }
+
+//   try {
+//     // Get stored subscription info
+//     const subDoc = await client
+//       .db('email-filter-db')
+//       .collection('subscription-ids')
+//       .findOne({ _id: uniqueId });
+
+//     if (!subDoc || !subDoc.subId) {
+//       return res.status(404).json({ message: "No active subscription found for this user" });
+//     }
+
+//     // Delete from Microsoft Graph
+//     await deleteSubscription(accessToken, subDoc.subId);
+
+//     // Remove from database
+//     const deleteResult = await client
+//       .db('email-filter-db')
+//       .collection('subscription-ids')
+//       .deleteOne({ _id: uniqueId });
+
+//     if (deleteResult.deletedCount > 0) {
+//       console.log(`[Subscription] Removed for user ${uniqueId}`);
+//       return res.status(200).json({ message: "Subscription deleted successfully" });
+//     } else {
+//       return res.status(500).json({ error: "Failed to remove from database" });
+//     }
+
+//   } catch (error) {
+//     console.error("[/delete-subscription] Error:", error);
+//     return res.status(500).json({ error: error.message });
+//   }
+// });
 
 //Storing refresh token
 app.post('/save-access-token', async (req, res) => {
@@ -395,7 +415,7 @@ app.post('/listen', async (req, res) => {
   // Respond with the validation token to complete Subscription validation process
   if (req.query?.validationToken) {
     console.log('[Webhook] Validation');
-    return res.type('text/plain').send(req.query.validationToken);
+    return res.status(202).send(req.query.validationToken);
   }
 
   // Send a 202 Accepted response to acknowledge that the webhook was received
@@ -455,4 +475,35 @@ app.post('/listen', async (req, res) => {
 app.listen(SERVER_PORT, () => {
   console.log(`Server listening on port ${SERVER_PORT}`)
 })
+
+// Auto-renew all active subscriptions for a given time
+setInterval(async () => {
+  console.log("[Auto-Renew] Running renewal check at", new Date().toLocaleString());
+
+  const allSubs = await client.db('email-filter-db').collection('subscription-ids').find({}).toArray();
+
+  for (const user of allSubs) {
+    try {
+      // Skip if subscription has already expired
+      if (user.expirationDateTime && new Date(user.expirationDateTime) < new Date()) {
+        console.log(`[Auto-Renew] Skipping expired subscription for ${user._id}. Cannot be renewed.`);
+        continue;
+      }
+      const tokenDoc = await client.db('email-filter-db').collection('access-tokens').findOne({ _id: user._id });
+      if (!tokenDoc?.accessToken) continue;
+
+      const renewed = await renewSubscription(tokenDoc.accessToken, user.subId);
+
+      // Update the expiration time in DB
+      await client.db('email-filter-db').collection('subscription-ids').updateOne(
+        { _id: user._id },
+        { $set: { expirationDateTime: renewed.expirationDateTime } }
+      );
+
+      console.log(`Renewed subscription for ${user._id}`);
+    } catch (err) {
+      console.error(`Failed to renew for ${user._id}:`, err.message);
+    }
+  }
+}, RENEWAL_INTERVAL);
 
