@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { MongoClient, ServerApiVersion } = require('mongodb');
-const { createSubscription, renewSubscription, RENEWAL_INTERVAL } = require('./subscriptions.js')
+const { createSubscription, renewSubscription, deleteSubscription, RENEWAL_INTERVAL } = require('./subscriptions.js')
 const cors = require("cors");
 
 const SERVER_PORT = process.env.SERVER_PORT
@@ -152,45 +152,45 @@ app.post('/create-subscription', async (req, res) => {
 });
 
 //Deleting a subscription
-// app.post('/delete-subscription', async (req, res) => {
-//   const { accessToken, uniqueId } = req.body;
+app.post('/delete-subscription', async (req, res) => {
+  const { accessToken, uniqueId } = req.body;
 
-//   if (!accessToken || !uniqueId) {
-//     return res.status(400).json({ error: "accessToken and uniqueId required" });
-//   }
+  if (!accessToken || !uniqueId) {
+    return res.status(400).json({ error: "accessToken and uniqueId required" });
+  }
 
-//   try {
-//     // Get stored subscription info
-//     const subDoc = await client
-//       .db('email-filter-db')
-//       .collection('subscription-ids')
-//       .findOne({ _id: uniqueId });
+  try {
+    // Get stored subscription info
+    const subDoc = await client
+      .db('email-filter-db')
+      .collection('subscription-ids')
+      .findOne({ _id: uniqueId });
 
-//     if (!subDoc || !subDoc.subId) {
-//       return res.status(404).json({ message: "No active subscription found for this user" });
-//     }
+    if (!subDoc || !subDoc.subId) {
+      return res.status(404).json({ message: "No active subscription found for this user" });
+    }
 
-//     // Delete from Microsoft Graph
-//     await deleteSubscription(accessToken, subDoc.subId);
+    // Delete from Microsoft Graph
+    await deleteSubscription(accessToken, subDoc.subId);
 
-//     // Remove from database
-//     const deleteResult = await client
-//       .db('email-filter-db')
-//       .collection('subscription-ids')
-//       .deleteOne({ _id: uniqueId });
+    // Remove from database
+    const deleteResult = await client
+      .db('email-filter-db')
+      .collection('subscription-ids')
+      .deleteOne({ _id: uniqueId });
 
-//     if (deleteResult.deletedCount > 0) {
-//       console.log(`[Subscription] Removed for user ${uniqueId}`);
-//       return res.status(200).json({ message: "Subscription deleted successfully" });
-//     } else {
-//       return res.status(500).json({ error: "Failed to remove from database" });
-//     }
+    if (deleteResult.deletedCount > 0) {
+      console.log(`[Subscription] Removed for user ${uniqueId}`);
+      return res.status(200).json({ message: "Subscription deleted successfully" });
+    } else {
+      return res.status(500).json({ error: "Failed to remove from database" });
+    }
 
-//   } catch (error) {
-//     console.error("[/delete-subscription] Error:", error);
-//     return res.status(500).json({ error: error.message });
-//   }
-// });
+  } catch (error) {
+    console.error("[/delete-subscription] Error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
 
 //Storing refresh token
 app.post('/save-access-token', async (req, res) => {
