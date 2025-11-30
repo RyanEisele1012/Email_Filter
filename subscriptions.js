@@ -87,30 +87,31 @@ async function renewSubscription(accessToken, subscriptionId) {
 /**
  * Deletes subscription using Graph API
  */
-// async function deleteSubscription(accessToken, subscriptionId) {
-//     const headers = new Headers();
-//     headers.append("Authorization", `Bearer ${accessToken}`);
+async function deleteSubscription(accessToken, subscriptionId) {
+    const headers = new Headers();
+    headers.append("Authorization", `Bearer ${accessToken}`);
 
-//     const options = { method: "DELETE", headers };
+    const options = { method: "DELETE", headers };
 
-//     try {
-//         const response = await fetch(`https://graph.microsoft.com/v1.0/subscriptions/${subscriptionId}`, options);
+    try {
+        const response = await fetch(`https://graph.microsoft.com/v1.0/subscriptions/${subscriptionId}`, options);
 
-//         if (!response.ok && response.status !== 404) { // 404 means already gone
-//             const errorData = await response.json();
-//             throw new Error(`Delete failed: ${JSON.stringify(errorData)}`);
-//         }
+        if (!response.ok && response.status !== 404) { // 404 means already gone
+            const errorData = await response.json();
+            throw new Error(`Delete failed: ${JSON.stringify(errorData)}`);
+        }
 
-//         console.log("[Subscription] Deleted successfully:", subscriptionId);
-//         return { success: true };
-//     } catch (error) {
-//         console.error("[Subscription] Delete error:", error.message);
-//         throw error;
-//     }
-// }
+        console.log("[Subscription] Deleted successfully:", subscriptionId);
+        return { success: true };
+    } catch (error) {
+        console.error("[Subscription] Delete error:", error.message);
+        throw error;
+    }
+}
 
 module.exports = {
     createSubscription,
     renewSubscription,
+    deleteSubscription,
     RENEWAL_INTERVAL
 };

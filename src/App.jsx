@@ -23,6 +23,7 @@ const DashboardContent = () => {
   const { instance, accounts } = useMsal();
   const isAuthenticated = useIsAuthenticated();
   const { setIsLoading } = useLoading();
+  const [subscriptionActive, setSubscriptionActive] = useState(false); 
 
   const [stats, setStats] = useState({
     totalEmails: 0,
@@ -71,8 +72,35 @@ const DashboardContent = () => {
           uniqueId: tokenResponse.uniqueId,
         }),
       });
+
+      setSubscriptionActive(true)
     } catch (error) {
       console.error("Failed to create subscription:", error);
+    }
+  }
+
+  async function deleteSubscription() {
+    if (!isAuthenticated || accounts.length === 0) return false;
+
+    try {
+      const tokenResponse = await instance.acquireTokenSilent({
+        account: accounts[0],
+        scopes: loginRequest.scopes,
+      });
+
+      await fetch("http://localhost:8080/delete-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken: tokenResponse.accessToken,
+          uniqueId: tokenResponse.uniqueId,
+        }),
+      });
+      setSubscriptionActive(false)
+      return true;
+    } catch (error) {
+      console.error("Failed to delete subscription:", error);
+      return false;
     }
   }
 
@@ -127,7 +155,6 @@ const DashboardContent = () => {
   // Run once when authenticated
   if (!ranOnce && isAuthenticated) {
     saveAccessToken();
-    createSubscription();
     fetchUserName(); // This will eventually set isLoading = false
     setRanOnce(true);
   }
@@ -214,11 +241,36 @@ const DashboardContent = () => {
         </div>
       </section>
 
-      <section className="refresh-button text-center">
-        <Button onClick={refresh}>Refresh Statistics</Button>
+      <section className="refresh-button">
+        <div className="d-flex gap-3 justify-content-center">
+          {subscriptionActive ? (
+            <div className="div">
+              <Button variant="danger" onClick={deleteSubscription}>
+                Stop Service
+              </Button>
+            </div>
+          ) : (
+            <div className="div">
+              <Button variant="success" onClick={createSubscription}>
+                Activate Service
+              </Button>
+            </div>
+          )}
+          <Button onClick={refresh}>Refresh Statistics</Button>
+        </div>
       </section>
 
       <section>
+        {subscriptionActive ? (
+          <p className="text-center">
+            Your emails are CURRENTLY being run through the spam filter.
+          </p>
+        ) : (
+          <p className="text-center">
+            Your emails are NOT being ran through the spam filter.
+          </p>
+        )}
+
         <div className="landing-info__title text-center mt-3">
           Disclaimer: We don't save any email data. If you wish to relinquish
           app permissions, visit&nbsp;
