@@ -79,7 +79,7 @@ const DashboardContent = () => {
     }
   }
 
-  async function deleteSubscription() {
+  async function deleteSubscriptionAndStats() {
     if (!isAuthenticated || accounts.length === 0) return false;
 
     try {
@@ -88,7 +88,7 @@ const DashboardContent = () => {
         scopes: loginRequest.scopes,
       });
 
-      await fetch("http://localhost:8080/delete-subscription", {
+      await fetch("http://localhost:8080/delete-subscription-and-stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -245,7 +245,7 @@ const DashboardContent = () => {
         <div className="d-flex gap-3 justify-content-center">
           {subscriptionActive ? (
             <div className="div">
-              <Button variant="danger" onClick={deleteSubscription}>
+              <Button variant="danger" onClick={deleteSubscriptionAndStats}>
                 Stop Service
               </Button>
             </div>
