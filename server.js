@@ -151,8 +151,8 @@ app.post('/create-subscription', async (req, res) => {
   }
 });
 
-//Deleting a subscription
-app.post('/delete-subscription', async (req, res) => {
+//Deleting a subscription and stats
+app.post('/delete-subscription-and-stats', async (req, res) => {
   const { accessToken, uniqueId } = req.body;
 
   if (!accessToken || !uniqueId) {
@@ -181,7 +181,6 @@ app.post('/delete-subscription', async (req, res) => {
 
     if (deleteResult.deletedCount > 0) {
       console.log(`[Subscription] Removed for user ${uniqueId}`);
-      return res.status(200).json({ message: "Subscription deleted successfully" });
     } else {
       return res.status(500).json({ error: "Failed to remove from database" });
     }
@@ -189,6 +188,25 @@ app.post('/delete-subscription', async (req, res) => {
   } catch (error) {
     console.error("[/delete-subscription] Error:", error);
     return res.status(500).json({ error: error.message });
+  }
+
+  //Delete stats
+  try {
+    const response = await client.db('email-filter-db').collection('user-data').deleteOne({ _id: uniqueId });
+
+    if (response.deletedCount > 0) {
+      // Successfully deleted the document
+      console.log('User data successfully removed');
+      return res.status(200).json({ message: 'User data removed successfully' });
+    } else {
+      // No document matched the _id (i.e., nothing to delete)
+      console.log('No matching user data found');
+      return res.status(404).json({ message: 'No user data found with the provided ID' });
+    }
+  } catch (error) {
+    // Error occurred during the delete operation
+    console.error('Error deleting stats:', error);
+    return res.status(500).json({ error: 'Failed to delete user stats', details: error.message });
   }
 });
 
