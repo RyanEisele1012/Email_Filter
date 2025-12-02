@@ -355,7 +355,7 @@ app.post('/predict-and-act', async (req, res) => {
   };
 
   try {
-    const response = await fetch('http://44.192.67.235:5000/predict', options);
+    const response = await fetch(`${process.env.MODEL_ENDPOINT}/predict`, options);
     const classifier = await response.json();
     console.log(`Email predicted as ${classifier.label}`);
     prediction = classifier.prediction
