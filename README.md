@@ -1,6 +1,6 @@
 # Post-Delivery Email Spam Filter for Outlook
 
-![Email-Filter-Photo](public\email_filter_photo.PNG)
+![Email-Filter-Photo](public/email_filter_photo.PNG)
 
 ## Project Overview
 
