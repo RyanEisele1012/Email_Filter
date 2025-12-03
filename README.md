@@ -31,4 +31,4 @@ This project demonstrates concepts in:
 | **Interactive Dashboard** | View spam trends and filter performance. |
 ---
 
-**Created from [Microsoft's React-SPA + MSAL Quick Setup](https://github.com/Azure-Samples/ms-identity-docs-code-javascript/tree/main/react-spa) template.**
+**You can check out our app currently hosted [here](https://emailfilter-plum.vercel.app/)! Created from [Microsoft's React-SPA + MSAL Quick Setup](https://github.com/Azure-Samples/ms-identity-docs-code-javascript/tree/main/react-spa) template.**
