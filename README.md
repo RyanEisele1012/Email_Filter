@@ -32,3 +32,5 @@ This project demonstrates concepts in:
 ---
 
 **You can check out our app currently hosted [here](https://emailfilter-plum.vercel.app/)! Created from [Microsoft's React-SPA + MSAL Quick Setup](https://github.com/Azure-Samples/ms-identity-docs-code-javascript/tree/main/react-spa) template.**
+
+**NOTE: Currently, the project only works well with data from our training/testing sets so if you wish to accurately gauge the performance, we recommend using observations from any of the [cleaned datasets](https://github.com/RyanEisele1012/Email_Filter/tree/main/Model/Cleaned%20Datasets) here.**
