@@ -1,155 +1,117 @@
-const { v4: uuidv4 } = require('uuid');
+// subscriptions.js
 
-const RENEWAL_INTERVAL = 50 * 60 * 1000; //50 minutes in miliseconds
-const INITIAL_INTERVAL = 60 * 60 * 1000; //60 minutes in miliseconds
-const NOTIFICATION_URI = process.env.NOTIFICATION_URI
+const RENEWAL_INTERVAL = 50 * 60 * 1000; // 50 minutes
+const INITIAL_INTERVAL = 60 * 60 * 1000; // 60 minutes
+const NOTIFICATION_URI = `${process.env.BACKEND_URL}/listen`;
 
 /**
- * Creates a subscription to listen to changes in user's inbox using Graph API.
- * @param {string} accessToken - Microsoft Graph access token
- * @param {string} uniqueId - The ID of the user (usually "me" for signed-in user)
- * 
- * @returns {string} subscriptionId - The ID of the subscription created for the user's inbox
+ * Creates a subscription and returns both ID and expiration
  */
-async function createSubscription(accessToken, uniqueId) {
-    // This should only be ran after checking Mongo for existing subId
-    // Otherwise, create a new subscription
+async function createSubscription(accessToken) {
     const headers = new Headers();
     headers.append("Authorization", `Bearer ${accessToken}`);
     headers.append("Content-Type", "application/json");
 
+    const expirationDateTime = new Date(Date.now() + INITIAL_INTERVAL);
+
     const body = JSON.stringify({
-        changeType: "created", // Only new emails
+        changeType: "created",
         notificationUrl: NOTIFICATION_URI,
         resource: `/me/mailFolders/inbox/messages`,
-        expirationDateTime: new Date(Date.now() + INITIAL_INTERVAL).toISOString(), // 1 hour from now
-        clientState: uuidv4() // Optional, used to validate notifications
+        expirationDateTime: expirationDateTime.toISOString(),
+        // clientState: uuidv4() // optional for verification
     });
 
-    const options = {
-        method: "POST",
-        headers: headers,
-        body: body
-    };
+    const options = { method: "POST", headers, body };
 
     try {
-        // Make the request to the Microsoft Graph API
         const response = await fetch("https://graph.microsoft.com/v1.0/subscriptions", options);
 
-        // Log status code and status text for debugging
-        console.log("[Webhook] Response Status:", response.status, response.statusText);
+        console.log("[Webhook] Create Response Status:", response.status, response.statusText);
 
-        // Check if the response status is not OK
         if (!response.ok) {
-            // If response is not OK, log the response and throw an error
-            const errorText = await response.text();  // Read response text to inspect the error message
-            throw new Error(`Error creating subscription: ${response.status} ${response.statusText}, ${errorText}`);
+            const errorText = await response.text();
+            throw new Error(`Failed to create subscription: ${response.status} ${errorText}`);
         }
 
-        // Parse the JSON response from the Microsoft Graph API
         const subscription = await response.json();
+        console.log("[Subscription] Created:", subscription.id, "Expires:", subscription.expirationDateTime);
 
-        // Debugging: Log the full response to understand the structure
-        console.log("[Webhook] Create Subscription Response:", subscription);
-
-        // Check if 'id' exists in the subscription response
-        if (subscription && subscription.id) {
-            const subscriptionId = subscription.id; // Extract subscriptionId
-            console.log(`[Subscription] Created: ${subscriptionId} for User ${uniqueId}`);
-            return subscriptionId; // Return the subscriptionId for further use
-        } else {
-            throw new Error("Subscription creation failed: No subscription id in response");
-        }
-
+        return {
+            subscriptionId: subscription.id,
+            expirationDateTime: subscription.expirationDateTime // ISO string from Microsoft
+        };
     } catch (error) {
-        // Log error details
-        console.log("[Webhook] Create failed:", error);
-        // Handle or rethrow the error if necessary
-        return null; // Ensure we return null if the subscription creation fails
+        console.error("[Webhook] Create failed:", error.message);
+        return null;
     }
 }
 
-
-
 /**
- * Renews an existing subscription using Graph API.
- * @param {string} accessToken - Microsoft Graph access token
- * @param {string} uniqueId - The ID of the user (usually "me" for signed-in user)
- * @param {string} subscriptionId - The ID of the subscription to renew
+ * Renews subscription by extending expiration
  */
-async function renewSubscription(accessToken, uniqueId, subscriptionId) {
-    //If there is, renew the subscription
+async function renewSubscription(accessToken, subscriptionId) {
     const headers = new Headers();
     headers.append("Authorization", `Bearer ${accessToken}`);
     headers.append("Content-Type", "application/json");
 
-    // Set a new expiration time (max 4230 minutes for mail subscriptions)
+    const newExpiration = new Date(Date.now() + RENEWAL_INTERVAL);
+
     const body = JSON.stringify({
-        expirationDateTime: new Date(Date.now() + RENEWAL_INTERVAL).toISOString() // renew for 1 more hour
+        expirationDateTime: newExpiration.toISOString()
     });
 
-    const options = {
-        method: "PATCH",
-        headers: headers,
-        body: body
-    };
+    const options = { method: "PATCH", headers, body };
 
     try {
         const response = await fetch(`https://graph.microsoft.com/v1.0/subscriptions/${subscriptionId}`, options);
+
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(JSON.stringify(errorData));
+            throw new Error(`Renew failed: ${JSON.stringify(errorData)}`);
         }
-        return response.json();
+
+        const updatedSub = await response.json();
+        console.log("[Subscription] Renewed:", subscriptionId, "New expiry:", updatedSub.expirationDateTime);
+
+        return {
+            subscriptionId: updatedSub.id,
+            expirationDateTime: updatedSub.expirationDateTime
+        };
     } catch (error) {
-        console.error("Error renewing subscription:", error);
+        console.error("[Subscription] Renew error:", error.message);
         throw error;
     }
 }
 
-
 /**
- * Deletes an existing subscription using Graph API.
- * @param {string} accessToken - Microsoft Graph access token
- * @param {string} subscriptionId - The ID of the subscription to delete
- * @returns {string} confirmation - Can either be succesful object or null.
+ * Deletes subscription using Graph API
  */
 async function deleteSubscription(accessToken, subscriptionId) {
     const headers = new Headers();
     headers.append("Authorization", `Bearer ${accessToken}`);
 
-    const options = {
-        method: "DELETE",
-        headers: headers
-    };
+    const options = { method: "DELETE", headers };
 
     try {
         const response = await fetch(`https://graph.microsoft.com/v1.0/subscriptions/${subscriptionId}`, options);
-        if (!response.ok) {
+
+        if (!response.ok && response.status !== 404) { // 404 means already gone
             const errorData = await response.json();
-            throw new Error(JSON.stringify(errorData));
+            throw new Error(`Delete failed: ${JSON.stringify(errorData)}`);
         }
-        let confirmation = { success: true }
-        return confirmation;
+
+        console.log("[Subscription] Deleted successfully:", subscriptionId);
+        return { success: true };
     } catch (error) {
-        console.error("Error deleting subscription:", error);
+        console.error("[Subscription] Delete error:", error.message);
         throw error;
     }
 }
 
-
-// Webhook handler - This is where notifications for new emails will be picked up
-async function emailListener(req, res) {
-    const notificationList = req.body?.value || [];
-    console.log(JSON.stringify(notificationList))
-
-    res.status(202).send();
-}
-
-//Proper export format if using require())
 module.exports = {
     createSubscription,
     renewSubscription,
     deleteSubscription,
-    emailListener,
+    RENEWAL_INTERVAL
 };
